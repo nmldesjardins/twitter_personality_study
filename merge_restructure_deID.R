@@ -204,55 +204,53 @@ names(fol_mt) <- names(foheaderm)
 fol_mt$stim = 'followers'
 
 
- ~*~*~ start here *~*~*
 ## get rid of variables we won't need
 
-# these are mostly qualtrics-generated variables (like timing, location), and
-# variables that just indicate the user saw a page (e.g., instructions, debrief)
-# i did these separately because the variable names are slightly different for 
-# each survey because of how they were created in qualtrics
-
 # profiles
-prof_hsp <- subset(prof_hsp, select = -c(endtiming_1:endtiming_4, Q102.1, Q102.7, 
+prof_mt <- subset(prof_mt, select = -c(endtiming_1:endtiming_4, Q102.1, Q102.7, 
                                          end, LocationLatitude,LocationLongitude,
-                                         LocationAccuracy,V1:V7, debrief,
-                                         Q1.1, Q1.3:Q1.5, Comments, X, Q3024))
-prof_hsp <- prof_hsp[, -grep(".30_", colnames(prof_hsp))]
+                                         LocationAccuracy,V1:V7,
+                                         Q1.1, Q1.3:Q1.5, Comments, X, Q3024, 
+                                         HITcode))
+prof_mt <- prof_mt[, -grep(".30_", colnames(prof_mt))]
+names(prof_mt)[names(prof_mt) == 'MTurkID'] <- 'id'
 
 # friends
-fri_hsp <- subset(fri_hsp, select = -c(Q5960_1:Q5960_4, Q3029_1:Q3029_4,
+fri_mt <- subset(fri_mt, select = -c(Q5960_1:Q5960_4, Q3029_1:Q3029_4,
                                        LocationLatitude,LocationLongitude,
                                        LocationAccuracy,V1:V7, Q102.1, Q102.7,
-                                       Q1.1, Q1.3:Q1.5, Debrief, Comments, X, Q3031))
-fri_hsp <- fri_hsp[, -grep(".30_", colnames(fri_hsp))]
+                                       Q1.1, Q1.3:Q1.5, Comments, X, Q3031,
+                                     Q3035))
+fri_mt <- fri_mt[, -grep(".30_", colnames(fri_mt))] #q1.2 = consent
+
+names(fri_mt)[names(fri_mt) == 'consent'] <- 'Q1.2'
+names(fri_mt)[names(fri_mt) == 'Q3033'] <- 'id'
+
 
 # followers
-fol_hsp <- subset(fol_hsp, select = -c(Q5960_1:Q5960_4, Q3026, Q3028,
+fol_mt <- subset(fol_mt, select = -c(Q5960_1:Q5960_4, Q3026, Q3028, Q3021,
                                        LocationLatitude,LocationLongitude,
-                                       LocationAccuracy,V1:V7, Q3033,
-                                       Q1.1, Q102.1, Q102.7, 
+                                       LocationAccuracy,V1:V7,
+                                       Q1.1, Q102.1, Q102.7,
                                        Q102.13, X, Q102.15))
-fol_hsp <- fol_hsp[, -grep(".30_", colnames(fol_hsp))]
+fol_mt <- fol_mt[, -grep(".30_", colnames(fol_mt))]
+names(fol_mt)[names(fol_mt) == 'Q102.11'] <- 'id'
 
-length(names(prof_hsp))
-length(names(fri_hsp))
-length(names(fol_hsp))
+length(names(prof_mt))
+length(names(fri_mt))
+length(names(fol_mt))
 
 
 ## merge all three together
 
 # first check the age variables (won't merge if different types)
-str(fol_hsp[,grep("..24", colnames(fol_hsp))])
-str(fri_hsp[,grep("..24", colnames(fri_hsp))])
-str(prof_hsp[,grep("..24", colnames(prof_hsp))])
-
-age_vars = c('Q52.24','Q53.24','Q54.24','Q55.24','Q56.24','Q71.24')
-prof_hsp[,age_vars] <- as.integer(unlist(prof_hsp[,age_vars]))
-
+str(fol_mt[,grep("..24", colnames(fol_mt))])
+str(fri_mt[,grep("..24", colnames(fri_mt))])
+str(prof_mt[,grep("..24", colnames(prof_mt))])
 
 # now bind
 
-hsp <- bind_rows(list(prof_hsp, fri_hsp, fol_hsp), .id = 'df')
+mturk <- bind_rows(list(prof_mt, fri_mt, fol_mt), .id = 'df')
 
 
 ### Restructure 
@@ -261,9 +259,9 @@ hsp <- bind_rows(list(prof_hsp, fri_hsp, fol_hsp), .id = 'df')
 # q1.2 = consent (should be 1)
 # questions start on qn.4
 
-hsp_long <- hsp %>%
+mt_long <- mturk %>%
         gather(key, value, -V8, -V9, -V10, -id, -Q1.2, -stim, -df, na.rm=T) %>%
-        extract(key,c('user','question'),"Q([:digit:]+).([:digit:]+)", 
+        extract(key,c('target_user','question'),"Q([:digit:]+).([:digit:]+)", 
                 remove=F)
 
 ## drop extra instruction items
@@ -272,21 +270,40 @@ hsp_long <- hsp %>%
 # type_convert converts dtypes from chr to more useful types
 # keep all user 102 qs (these are participant demographics)
 
-hsp_long <- hsp_long %>% type_convert() %>%
-        filter(question > 3 | user == 102) %>% filter(question != 27)
+mt_long <- mt_long %>% type_convert() %>%
+        filter(question > 3 | target_user == 102) %>% filter(question != 27)
 
-summary(as.factor(hsp_long$question))
-summary(as.factor(hsp_long$user))
+summary(as.factor(mt_long$question))
+summary(as.factor(mt_long$target_user))
+
+# identify sample
+mt_long$sample = 'mturk'
+
 
 ## Create a unique user id
-hsp_long$unique_id <- as.numeric(as.factor(with(hsp_long, paste(id))))
+mt_long$unique_id <- as.numeric(as.factor(with(mt_long, paste(id))))
 
-length(unique(hsp_long$id))
-length(unique(hsp_long$unique_id))
+length(unique(mt_long$id))
+length(unique(mt_long$unique_id))
+
+
+
+# COMBINE MTURK & HSP ----------------------------------------------------------
+hsp_long$id <- as.character(hsp_long$id)  
+str(hsp_long$id)
+head(hsp_long$id)
+
+df <- bind_rows(list(hsp_long, mt_long), .id = 'sam')
+
+df$unique_id2 <- as.numeric(as.factor(with(df, paste(id, sample))))
+
+length(unique(df$id))
+length(unique(df$unique_id2))
+
+View(df)
+
+# 581:584 are likely duds; one is the mturk code, one is an email address, 
+# and 2 are NAs
 
 # remove the sona id
 hsp_long <- subset(hsp_long, select = -c(id))
-
-# identify the sample
-hsp_long$sample = 'hsp'
-
