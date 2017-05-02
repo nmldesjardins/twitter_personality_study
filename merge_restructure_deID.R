@@ -45,10 +45,10 @@ fol_hsp$stim = 'followers'
 
 ## get rid of variables we won't need
 
-# these are mostly qualtrics-generated variables (like timing, location), and
+# these are qualtrics-generated variables (like timing, location), and
 # variables that just indicate the user saw a page (e.g., instructions, debrief)
-# i did these separately because the variable names are slightly different for 
-# each survey because of how they were created in qualtrics
+# the variable names are slightly different for each survey because of how they
+# were created in qualtrics
 
 # profiles
 prof_hsp <- subset(prof_hsp, select = -c(endtiming_1:endtiming_4, Q102.1, Q102.7, 
@@ -84,6 +84,8 @@ str(fol_hsp[,grep("..24", colnames(fol_hsp))])
 str(fri_hsp[,grep("..24", colnames(fri_hsp))])
 str(prof_hsp[,grep("..24", colnames(prof_hsp))])
 
+# some Ps entered characters (e.g., '?') as ages for the profiles
+# change to integer
 age_vars = c('Q52.24','Q53.24','Q54.24','Q55.24','Q56.24','Q71.24')
 prof_hsp[,age_vars] <- as.integer(unlist(prof_hsp[,age_vars]))
 
@@ -97,7 +99,7 @@ hsp <- bind_rows(list(prof_hsp, fri_hsp, fol_hsp), .id = 'df')
 
 # v10 = finished survey (1 if did)
 # q1.2 = consent (should be 1)
-# questions start on qn.4
+# questions start on qN.4
 
 hsp_long <- hsp %>%
                 gather(key, value, -V8, -V9, -V10, -id, -Q1.2, -stim, -df, na.rm=T) %>%
@@ -111,8 +113,8 @@ hsp_long <- hsp %>%
 # keep all user 102 qs (these are participant demographics)
 
 hsp_long <- hsp_long %>% type_convert() %>%
-                filter(question > 3 | target_user == 102) %>% 
-                filter(question != 27)
+                filter(question > 3 | target_user == 102) %>% # only keep actual questions + demographics
+                filter(question != 27) # drop q27 (ladder instructions)
 
 summary(as.factor(hsp_long$question))
 summary(as.factor(hsp_long$target_user))
@@ -163,12 +165,23 @@ dec_long$df = 4
 # Merge S1 & S2 ----
 s1s2hsp <- bind_rows(hsp_long,dec_long)
 
+summary(as.factor(s1s2hsp$study))
+summary(as.factor(s1s2hsp$sample))
+summary(as.factor(s1s2hsp$stim))
+
 
 ## Create a unique user id
 s1s2hsp$unique_id <- as.numeric(as.factor(with(s1s2hsp, paste(id))))
 
 length(unique(s1s2hsp$id))
-length(unique(s1s2hsp$unique_id))
+length(unique(s1s2hsp$unique_id)) # 460 unique IDs, ranging from 1:460
+
+# at this point, everyone appears to be uniquely identified
+# but! some users have too many responses -- incompelte attempts and duplicate
+# attempts (e.g., where they started, didn't finish, and then came back and
+# started again) are still included
+summary(as.factor(s1s2hsp$id))
+summary(as.factor(s1s2hsp$unique_id))
 
 # remove the sona id - do this at the very end, just to make sure everything
 # is as it should be once the mturkers pop in
@@ -281,29 +294,35 @@ mt_long$sample = 'mturk'
 
 
 ## Create a unique user id
-mt_long$unique_id <- as.numeric(as.factor(with(mt_long, paste(id))))
+mt_long$unique_id <- as.numeric(as.factor(with(mt_long, paste(toupper(id)))))
 
 length(unique(mt_long$id))
-length(unique(mt_long$unique_id))
+length(unique(mt_long$unique_id)) # 257 unique IDs; 1:257
 
+# again, duplicates and unfinished are still included
+summary(as.factor(mt_long$id))
+summary(as.factor(mt_long$unique_id))
+
+summary(as.factor(mt_long[which(mt_long$unique_id==256),]$id)) # id = NA, which is why the count is so high for this one
 
 
 # COMBINE MTURK & HSP ----------------------------------------------------------
-hsp_long$id <- as.character(hsp_long$id)  
-str(hsp_long$id)
-head(hsp_long$id)
 
-df <- bind_rows(list(hsp_long, mt_long), .id = 'sam')
+# change hsp id from numeric so they play well together
+length(unique(s1s2hsp$id))
+s1s2hsp$id <- as.character(s1s2hsp$id) 
+length(unique(s1s2hsp$id))
+str(s1s2hsp$id)
+head(s1s2hsp$id)
 
-df$unique_id2 <- as.numeric(as.factor(with(df, paste(id, sample))))
+df <- bind_rows(list(s1s2hsp, mt_long), .id = 'sam')
 
-length(unique(df$id))
-length(unique(df$unique_id2))
+df$unique_id2 <- as.numeric(as.factor(with(df, paste(toupper(id)))))
 
-View(df)
+length(unique(df$id)) # original ids
+length(unique(df$unique_id2)) # new ids
 
-# 581:584 are likely duds; one is the mturk code, one is an email address, 
-# and 2 are NAs
-
-# remove the sona id
-hsp_long <- subset(hsp_long, select = -c(id))
+## remove original/identifying IDs
+## remove test cases
+## remove non-consents
+## remove duplicate attempts???? (this might have to go earlier...)
