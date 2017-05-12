@@ -1,0 +1,363 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This notebook goes through the data selection process for the Twitter Personality Study. It is primiarly focused on removing duplicate attempts from the same participant. It starts with the dataset created in `merge_restructure_delID.R`, which is publically available <XX url here XX>. This dataset contains all of the data collected from participants for this paper, which includes:
+
+* Study 1
+        * Personality impressions based on Twitter users' _profiles_, _followers_, and _friends_
+        * MTurk and Human Subjects Pool participants
+* Study 2
+        * Social decisions based on Twitter users' _profiles_
+        * Human Subjects Pool participants (we did not recruit MTurkers for this study)
+
+The dataset is in a very long format, where each row represents one response to one question from one participant.
+
+# Multiple Responses: Overview & Strategy
+
+During data collection, we put several safeguards in place to prevent individual participants from completing the study more than once. Due to both human and technical error, however, this didn't always pan out. In the rest of this document, I go through the data to both identify and remove participants who made multiple attempts at the study.
+
+There are 3[^1] sets of participants who are identified in this analysis:
+1. completed surveys about the same set of targets more than once
+2. completed surveys with the same kind of stimuli more than once
+3. completed more than one survey, but with different types of stimuli and different sets of targets
+
+The aim of this analysis is to both (a) maximize power by retaining as many participant responses as possible, while (b) ensuring independence across our observations. For those who fall into category 1 or 2, we will ultimately select only their first attempt at completing the study. 
+
+Those who fall into category 3 are trickier. They did not rate the same target more than once, and they saw different kinds of stimuli. Moreover, because we collected the data for different types of stimuli sequentially, using only their first response will almost always mean that we will end up with more responses for profiles (which were collected first) than for the other two categories. As a result, we will keep these participants in the dataset, but will test to see whether their inclusion impacts the results.
+
+
+# Set-Up & Initial Selection
+```{r}
+library(tidyverse)
+library(psych)
+setwd('~/Dropbox/Twitter and personality project/personality impressions study/Personality Ratings Study/third times a charm/raw files from qualtrics')
+
+df <- tbl_df(read_csv('Personality Impressions on Twitter_050417.csv'))
+```
+
+To start, I check to be sure everyone consented and check and remove unfinished surveys. 
+
+
+Consent (will be 1 if consented):
+```{r}
+summary(as.factor(df$consent))
+```
+
+Finished survey (1 if finished)
+```{r}
+summary(as.factor(df$finished))
+```
+
+```{r}
+df %>% filter(finished == 0) %>% summarize(n_distinct(pID)) 
+unfinished <- df %>% filter(finished == 0) %>% group_by(pID, start_date, study) %>% summarize(count=n())
+unfinished
+```
+8 participants didn't finish the survey, though two of them (410 and 652) appear to have completed all of the questions, and two others (291, 423) completed most of the questions. This sometimes happens with Qualtrics -- a participant will complete the survey but fail to click 'submit' at the end, and it's recorded as unfinished.
+
+Let's see if anyone completed a second attempt:
+
+
+```{r}
+finish <- df %>% filter(finished == 1) %>% group_by(pID, start_date) %>% summarize(count=n())
+
+left_join(unfinished, finish, by = 'pID')
+```
+
+4 participants went on to complete the survey immediately after their 'uncompleted' attempts. 
+
+*Decision*: I will keep all of the 'unfinished' attempts that have >= 128 responses, because these participants completed almost all or all of the questions. This means I'll be retaining 4 of the attempts (for pID 291, 410, 423, and 143). The other unfinished attempts will be dropped. This means that pID 291 will have two separate attempts in the dataset. These will be reconciled later in this document.
+
+*Drop unfinished attempts with less than 128 responses:*
+```{r}
+df <- df %>% filter(finished == 1 | pID == 652 | pID == 410 | pID == 423 | pID == 291)
+```
+
+
+# Screening for Multiple Attempts
+
+Most participants who completed one survey for Study 1 should have 132 responses:
+25 questions per target * 5 targets + 7 demographic questions (8 if ESL) = 132 (133 if ESL) 
+
+Those who completed one survey for Study 2 should have 142 responses:
+27 questions * 5 targets + 7 demographic questions = 142 (143 if ESL)
+
+## Multiple Perceptions of the Same Targets
+
+I'll first look into how many participants saw stimuli for the same set of targets more than once. Because the set of targets that was presented to a participant was randomly selected for each instance of a survey, I expect the rate of this to be quite low.
+
+```{r}
+# Study 1
+df %>% filter(study == 1) %>% group_by(pID, target_user) %>% 
+        summarize(count=n()) %>% filter(pID != target_user & count > 25)
+```
+```{r}
+# Study 2
+df %>% filter(study == 2) %>% group_by(pID, target_user) %>% 
+        summarize(count=n()) %>% filter(pID != target_user & count > 27)
+```
+
+None of the Study 2 participants saw the same targets more than once. Three Study 1 participants did. However, while pID 718 and 732 appear to have completed two full surveys with the same targets, pID 236 only responded about one particular target more than once.
+
+Let's take a closer look at 236.
+
+```{r}
+df %>% filter(pID == 236) %>% group_by(start_date) %>% summarize(count=n())
+```
+
+236 completed the survey 3 times in rapid succession, and then a 4th time later in the day. It looks like their shortest attempt (count = 32) might be why we see them responding just about target 6 twice. Let's double check.
+
+```{r}
+df %>% filter(pID == 236) %>% group_by(start_date, target_user) %>% 
+        summarize(count=n())
+```
+Yep, that's what it is. And the participant must have clicked all the way through the survey, because this wasn't caught with the 'unfinished' filter.
+
+*Decision:* As noted above, I'll ultimtely be selecting the first attempt for all of the repeat participants, including these three. This will be done in the next section, along with participants who saw the same type of stimuli (but not about the same targets) more than once.
+
+## Multiple Responses for the Same Stimuli
+
+### Explore Frequency of Multiple Responses
+The participants I'm focusing on here have seen the same stimuli (profiles, followers, or friends) more than once. That is, they compelted the same survey (but with a different set of targets) more than once. 
+
+Let's first see how common this was, by looking at the number of targets each participant saw (not including themselves). These should be no more than 5, and would only be fewer than 5 if the participant didn't complete the survey. Note that this will not capture the people we identified in the previous section, who saw the same sets of targets.
+
+```{r}
+# Study 1
+df %>% group_by(pID) %>% filter(pID != target_user & study == 1) %>% 
+        summarize(users = n_distinct(target_user)) %>% filter(users > 5) %>%
+        summarize(count = n())
+```
+```{r}
+# Study 2
+df %>% group_by(pID) %>% filter(pID != target_user & study == 2) %>% 
+        summarize(users = n_distinct(target_user)) %>% filter(users > 5) %>%
+        summarize(count = n())
+```
+63 participants (+2, from above) completed some part of Study 1 more than once; 0 participants completed Study 2 more than once.
+
+```{r}
+multatt <- df %>% group_by(pID) %>% filter(pID != target_user & study == 1) %>% 
+        summarize(users = n_distinct(target_user)) %>% filter(users > 5)
+
+multatt_only <- df %>% filter(pID %in% multatt$pID)
+
+table(multatt_only$pID, multatt_only$stim)
+
+```
+
+A few different patterns emerge here. First, all of the HSP participants (noted by lower pIDs) with multiple attempts completed surveys with the same kind of stimuli. Among MTurkers, some saw different stimuli, some saw the same stimuli multiple times, and some had a combination (e.g., 799 completed all 3 types of surveys, and completed the profile survey twice). Among all the participants who had multiple attempts, the majority of them saw the profile stimuli more than once.
+
+For now, I'll ignore the cases where participants saw more than one type of stimulus, and saw each of those stimuli only once (e.g., pIDs 872:907). The focus instead will be on those participants who saw the same stimulus more than once. Because this is all from Study 1, participants should have no more than 133 responses for any one kind of stimuli.
+
+```{r}
+df %>% filter(pID %in% multatt$pID) %>% group_by(pID, stim) %>% 
+        summarize(count = n()) %>% filter(count > 133) 
+
+df %>% filter(pID %in% multatt$pID) %>% group_by(pID, stim) %>% 
+        summarize(count = n()) %>% filter(count > 133) %>% summarize(n_distinct(pID))
+```
+
+The first table shows that we have 19 participants who saw the same stimuli more than once. The second one indicates that none of these participants saw multiple stimuli multiple times (i.e., no one did the profile survey AND the friends survey more than once).
+
+Our plan is to keep only the first attempts for each of these participants. Our reasoning is that these first attempts will be most similar to the rest of the data, which was generated by people who only did they survey once, in large part because it's the first time the participants are exposed to the study. 
+
+We also suspect that several (if not all) of the HSP participants who completed the study more than once did so because the automatic credit-granting system was delayed. We suspect they took the survey once in good faith, found that they didn't autmatically recieve their credit in the HSP system, and then clicked through the survey again to try to trigger their credit. 
+
+In contrast, the repeat MTurkers probably just forgot that they had completed the survey and did it again when the next batch of HIITs were released (there was no sure-fire way to prevent this from happening, and likely also explains why many of them completed the surveys with different stimuli). Even if this is the case, and they did complete their subsequent attempts in good faith (i.e., without just clicking through), they would have already been exposed to similar stimuli, and so it's possible that their expectations about the study differed from those who were seeing it for the first time. 
+
+To be clear: we do not have any hypotheses as to whether responses from people who took the surveys more than once would differ in any substantial way from those who did not, and we suspect that keeping them in the dataset would not significantly alter the results. Because of the concerns over data quality in subsequent attempts (especially among HSP participants), and in order to keep the procedure (i.e., taking the survey once) constant across participants, we elected to remove them from the analyses.
+
+
+### Index Multiple Attempts and Create Quality Checks
+
+Before removing these cases, though, we need to identify them. I'll also check whether the concerns about quality are borne out. I'll look at how long people took to complete the survey, as well as how much variance there is in their answers (assuming larger SDs indicate less clicking through). 
+
+
+```{r}
+# compute duration for everyone
+df <- df %>% mutate(duration = end_date - start_date)
+# compute sd of responses across whole survey
+df <- df %>% group_by(pID, start_date) %>% mutate(survey_sd = sd(value))
+```
+
+To compare first vs. later attempts, we need to create an index for each attempt. Because the start and end times are full timestamps, they uniquely identify every attempt. I'll create two indices: 
+        1. `attempt` will count the total number of surveys completed, across all kinds of stimuli, in order (i.e., 1 = 1st survey completed; 2 = 2nd; etc.)
+        2. `stim_attempt` will count the total number of surveys _of a particular kind of stimuli_ completed, in order
+        
+For example, if someone completed two profile surveys and then later completed one friends survey, `attempt` would be 1 - 2 - 3, and `stim_attempt` would be 1 - 2 - 1.
+
+```{r}
+# get one row per attempt
+df_uniq <- df %>% select(pID, start_date, duration, survey_sd, study, sample, stim) %>%
+        arrange(pID)
+df_uniq <- unique(df_uniq)
+
+# create index by start date for all attempts
+df_uniq <- df_uniq %>% group_by(pID) %>% mutate(attempt = row_number(start_date))
+
+# create index by start date for all attempts with the same stimuli
+df_uniq <- df_uniq %>% group_by(pID, stim) %>% 
+        mutate(stim_attempt = row_number(start_date))
+```
+
+I'll next make two indices that record whether the person has more than one attempt (overall + for a given stimulus), so we can compare the multiple-attempt people to the single-attempt people. The variables will be coded as 1 for people with multiple attempts and 0 otherwise.
+
+```{r}
+df_uniq <- df_uniq %>% group_by(pID) %>% 
+        mutate(mult_attempts = ifelse(n() > 1, 1, 0))
+
+df_uniq <- df_uniq %>% group_by(pID, stim) %>% 
+        mutate(mult_stim_attempts = ifelse(n() > 1, 1, 0))
+```
+
+
+Before moving on, let's check to make sure they're working as expected. We know 236 has several attempts of the profile survey, so we'll spot check that one:
+
+```{r}
+head(df_uniq %>% filter(pID > 235 & pID < 240) %>% arrange(pID, start_date), 10)
+```
+
+We also know that 755 has two attempts total, but that they're for different stimuli. The `attempt` variable should reflect those two attempts (i.e., should be 1 and 2), but the `attempt_stim` variable should be 1 for both attempts (i.e., they're the first attempt for that kind of stimuli). Likewise, `mult_attempts` should be 1, but `multi_stim_attempts` should be 0.
+
+```{r}
+head(df_uniq %>% filter(pID > 751 & pID < 756) %>% arrange(pID, start_date), 10)
+```
+
+Finally, let's take a gander at the two participants who saw the same targets more than once, to be sure they're appropriately captured. 
+
+```{r}
+head(df_uniq %>% filter(pID == 718 | pID == 732) %>% arrange(pID, start_date))
+```
+Great. We're indexing their attempts appropriately (though we still don't have an indicator that they've seen stimuli for the same set of targets). As stated above, we're going to kick out their subsequent attempts to keep the data independent. However, it's worth mentioning that -- because they saw different kinds of stimuli -- it's possible that they had no indication that they were rating the same targets (although it's _also_ possible that there was overlap in some of the friends and followers that 718 saw).
+
+### Quality Checks
+
+Before merging the indices back into the full dataset, let's look at the duration and standard deviations. I'll first compare all of the first attempts (so, the majority of the data) to subsequent attempts, and then look more granularly at subsequent attempts.
+
+
+#### Duration
+
+```{r}
+ggplot(df_uniq, aes(attempt, duration)) + 
+        geom_point(aes(colour = as.factor(mult_attempts))) + 
+        facet_wrap(~ study) + 
+        ggtitle("Time Spent on Each Attempt")
+```
+
+
+
+```{r}
+ggplot(df_uniq, aes(stim_attempt, duration)) + 
+        geom_point(aes(colour = as.factor(mult_stim_attempts))) + 
+        facet_wrap(~ study) +
+        ggtitle("Time Spent on Each Attempt with the Same Stimuli")
+```
+
+
+```{r}
+ggplot(df_uniq, aes(as.factor(stim_attempt), duration)) + 
+        geom_boxplot() +  
+        facet_wrap(~ study) +
+        ggtitle("Time Spent on Each Attempt with the Same Stimuli")
+```
+
+There is a ton of variability in the duration of the first attempts, and I'm concerned about these people who spend less than 5 minutes on the survey. But, on average, people are taking somewhat less time with the subsequent attempts, and that seems especially true if they are seeing the same kind of stimuli.
+
+Let's take a closer look just at the people who have multiple attempts (this will automatically only be for Study 1).
+
+```{r}
+ggplot(df_uniq %>% filter(mult_attempts == 1), aes(attempt, duration)) + 
+        geom_point() + 
+        ggtitle("Time Spent on Each Attempt - Multiple Attempts Only")
+```
+
+```{r}
+ggplot(df_uniq %>% filter(mult_stim_attempts == 1), aes(stim_attempt, duration)) + 
+        geom_point() + 
+        ggtitle("Time Spent on Each Attempt of Same Stimuli - Multiple Attempts Only")
+```
+
+#### Variance
+
+My assumption here as that higher quality data will have more variance. This assumption may or may not be valid. 
+
+```{r}
+ggplot(df_uniq, aes(attempt, (survey_sd^2))) + 
+        geom_point(aes(colour = as.factor(mult_attempts))) +  
+        facet_wrap(~ study) +
+        ggtitle("Variance Across Each Attempt") + ylab('survey variance')
+```
+
+
+```{r}
+ggplot(df_uniq, aes(stim_attempt, (survey_sd^2))) + 
+        geom_point(aes(colour = as.factor(mult_stim_attempts))) +  
+        facet_wrap(~ study) +
+        ggtitle("Variance Across Each Attempt with Same Stimuli") + 
+        ylab('survey variance')
+```
+
+There's a lot of variability in the variance, and this probably isn't a great indicator of anything.
+
+
+#### Low Duration - Low Variance
+
+There isn't a strong indication that first attempts are 'better' (or worse) than later attempts. For the reasons outlined above (mainly, to keep the procedure more constant across participants), we'll still be removing subsequent attempts with the same kind of stimuli.
+
+However, the plots above indicate that there are some single-attempt participants who spent very little time (< 5 min) and who have very low variance (< 10). Let's take a closer look at them.
+
+```{r}
+ggplot(df_uniq %>% filter(duration < 5), aes(as.factor(attempt), duration)) +
+        geom_point(aes(colour = survey_sd)) +
+        facet_wrap(~ study)
+```
+```{r}
+ggplot(df_uniq %>% filter((survey_sd^2) < 10), aes(as.factor(attempt), survey_sd)) +
+        geom_point(aes(colour = duration)) +
+        facet_wrap(~study)
+```
+Overall, people were faster and less varied in their responses for Study 2 compared to Study 1. There are, however, a handful of Study 1 participants who stand out as taking very little time and/or having very little variance in their responses, and these are typically for first attempts.
+
+
+
+Let's look at the relationship between duration and variance.
+
+```{r}
+ggplot(df_uniq, aes(survey_sd, duration)) + 
+        geom_point(aes(col = as.factor(attempt)))
+```
+
+The multiple/subsequent attempts look basically the same as first/single attempts, but I'm concerned about this hunk of people with very very low variance in their responses, especially because there appears to be a really clear break between them and everyone else. Let's see if it has somehting to do with sample.
+
+```{r}
+ggplot(df_uniq, aes(survey_sd, duration)) + 
+        geom_point(aes(col = as.factor(sample)))
+```
+
+Grrr.
+
+```{r}
+ggplot(df_uniq, aes(survey_sd, duration)) + 
+        geom_point(aes(col = as.factor(stim)))
+```
+
+Oh but they're all for profiles...that seems suspicious. Since Study 2 was all profiles _and_ all HSP, perhaps that's the issue.
+
+```{r}
+ggplot(df_uniq, aes(survey_sd, duration)) + 
+        geom_point(aes(col = as.factor(study)))
+```
+
+Ahhah! They aren't so terrible after all; they just completed a different study.
+
+```{r}
+df_uniq %>% filter(survey_sd < 3) %>% summarize(count=n())
+```
+
+
+
+[^1]: A 4th category might be participants who completed both Study 1 and Study 2. Our controls _did_ work here, though, so no participants fell into this category.
+

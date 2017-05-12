@@ -49,6 +49,8 @@ fol_hsp$stim = 'followers'
 # variables that just indicate the user saw a page (e.g., instructions, debrief)
 # the variable names are slightly different for each survey because of how they
 # were created in qualtrics
+# also does some re-naming so datasets will eventually line up/corrects
+# qualtrics errors
 
 # profiles
 prof_hsp <- subset(prof_hsp, select = -c(endtiming_1:endtiming_4, Q102.1, Q102.7, 
@@ -63,6 +65,9 @@ fri_hsp <- subset(fri_hsp, select = -c(Q5960_1:Q5960_4, Q3029_1:Q3029_4,
                                          LocationAccuracy,V1:V7, Q102.1, Q102.7,
                                          Q1.1, Q1.3:Q1.5, Debrief, Comments, X, Q3031))
 fri_hsp <- fri_hsp[, -grep(".30_", colnames(fri_hsp))]
+names(fri_hsp)[names(fri_hsp) == 'Q5594'] <- 'Q6.15'
+names(fri_hsp)[names(fri_hsp) == 'Q1474'] <- 'Q91.6'
+
 
 # followers
 fol_hsp <- subset(fol_hsp, select = -c(Q5960_1:Q5960_4, Q3026, Q3028,
@@ -71,6 +76,8 @@ fol_hsp <- subset(fol_hsp, select = -c(Q5960_1:Q5960_4, Q3026, Q3028,
                                          Q1.1, Q102.1, Q102.7, 
                                         Q102.13, X, Q102.15))
 fol_hsp <- fol_hsp[, -grep(".30_", colnames(fol_hsp))]
+names(fol_hsp)[names(fol_hsp) == 'Q5594'] <- 'Q6.15'
+names(fol_hsp)[names(fol_hsp) == 'Q1474'] <- 'Q91.6'
 
 length(names(prof_hsp))
 length(names(fri_hsp))
@@ -107,7 +114,9 @@ hsp_long <- hsp %>%
                 remove=F)
 
 ## drop extra instruction items
-# qn.1 = instructions; qn.2 = profile picture; qn.3 = 'this person...'
+
+# qn.1 = instructions
+# qn.2 = profile picture; qn.3 = 'this person...'
 # qn.27 = ladder instructions
 # type_convert converts dtypes from chr to more useful types
 # keep all user 102 qs (these are participant demographics)
@@ -155,12 +164,13 @@ dec_long <- dec %>%
 # type_convert converts dtypes from chr to more useful types
 # keep all user 102 qs (these are participant demographics)
 
-dec_long <- dec_long %>% type_convert() %>% filter(question > 3 | target_user == 102) 
+dec_long <- dec_long %>% type_convert() %>% 
+        filter(question > 3 | target_user == 102) 
 
 # identify the sample + study
 dec_long$sample = 'hsp'
 dec_long$study = 2
-dec_long$df = 4
+dec_long$df = 4 # this was automatically created for 1:3 for the 3 personality files
 
 # Merge S1 & S2 ----
 s1s2hsp <- bind_rows(hsp_long,dec_long)
@@ -171,21 +181,21 @@ summary(as.factor(s1s2hsp$stim))
 
 
 ## Create a unique user id
+# this isn't strictly necessary here, as we'll have to make a new
+# id when both samples are combined (so they don't overlap). I did it here
+# just to be sure I had a good handle on N
 s1s2hsp$unique_id <- as.numeric(as.factor(with(s1s2hsp, paste(id))))
 
 length(unique(s1s2hsp$id))
 length(unique(s1s2hsp$unique_id)) # 460 unique IDs, ranging from 1:460
 
 # at this point, everyone appears to be uniquely identified
-# but! some users have too many responses -- incompelte attempts and duplicate
+# but! some users have too many responses -- incomplete attempts and duplicate
 # attempts (e.g., where they started, didn't finish, and then came back and
 # started again) are still included
 summary(as.factor(s1s2hsp$id))
 summary(as.factor(s1s2hsp$unique_id))
 
-# remove the sona id - do this at the very end, just to make sure everything
-# is as it should be once the mturkers pop in
-# hsp_long <- subset(hsp_long, select = -c(id))
 
 # MTURK DATA -----------------------------------------------------
 # we'll follow the same process as we did above, but now for the mturkers
@@ -238,6 +248,8 @@ fri_mt <- fri_mt[, -grep(".30_", colnames(fri_mt))] #q1.2 = consent
 
 names(fri_mt)[names(fri_mt) == 'consent'] <- 'Q1.2'
 names(fri_mt)[names(fri_mt) == 'Q3033'] <- 'id'
+names(fri_mt)[names(fri_mt) == 'Q5594'] <- 'Q6.15'
+names(fri_mt)[names(fri_mt) == 'Q1474'] <- 'Q91.6'
 
 
 # followers
@@ -247,7 +259,10 @@ fol_mt <- subset(fol_mt, select = -c(Q5960_1:Q5960_4, Q3026, Q3028, Q3021,
                                        Q1.1, Q102.1, Q102.7,
                                        Q102.13, X, Q102.15))
 fol_mt <- fol_mt[, -grep(".30_", colnames(fol_mt))]
+
 names(fol_mt)[names(fol_mt) == 'Q102.11'] <- 'id'
+names(fol_mt)[names(fol_mt) == 'Q5594'] <- 'Q6.15'
+names(fol_mt)[names(fol_mt) == 'Q1474'] <- 'Q91.6'
 
 length(names(prof_mt))
 length(names(fri_mt))
@@ -277,6 +292,7 @@ mt_long <- mturk %>%
         extract(key,c('target_user','question'),"Q([:digit:]+).([:digit:]+)", 
                 remove=F)
 
+
 ## drop extra instruction items
 # qn.1 = instructions; qn.2 = profile picture; qn.3 = 'this person...'
 # qn.27 = ladder instructions
@@ -284,13 +300,15 @@ mt_long <- mturk %>%
 # keep all user 102 qs (these are participant demographics)
 
 mt_long <- mt_long %>% type_convert() %>%
-        filter(question > 3 | target_user == 102) %>% filter(question != 27)
+        filter(question > 3 | target_user == 102) %>% 
+        filter(question != 27)
 
 summary(as.factor(mt_long$question))
 summary(as.factor(mt_long$target_user))
 
-# identify sample
+# identify sample + study
 mt_long$sample = 'mturk'
+mt_long$study = 1
 
 
 ## Create a unique user id
@@ -304,6 +322,7 @@ summary(as.factor(mt_long$id))
 summary(as.factor(mt_long$unique_id))
 
 summary(as.factor(mt_long[which(mt_long$unique_id==256),]$id)) # id = NA, which is why the count is so high for this one
+
 
 
 # COMBINE MTURK & HSP ----------------------------------------------------------
@@ -322,7 +341,113 @@ df$unique_id2 <- as.numeric(as.factor(with(df, paste(toupper(id)))))
 length(unique(df$id)) # original ids
 length(unique(df$unique_id2)) # new ids
 
-## remove original/identifying IDs
-## remove test cases
-## remove non-consents
-## remove duplicate attempts???? (this might have to go earlier...)
+# remove test cases (where id is missing or invalid)
+# The test cases are instances where one of the researchers went through the 
+# study to ensure it was working properly; these are identified by cases that 
+# have no id or have invalid ids. 
+
+# remove cases with invalid or missing ids
+df <- df %>% filter(id != "99999" & id != "dekubaba" & is.na(id) == F)
+
+
+# remove identifying ids and sample-specific unique_ids to avoid confusion later
+df <- df %>% select(-c(id,unique_id))
+
+# rename id var
+names(df)[names(df) == 'unique_id2'] <- 'pID'
+
+### do some clean up to make the dataset more user-friendly
+
+## update target ids
+# now, the first 101 perciever ids overlap with the target ids
+# we'll keep the target ids as-is (2:101), but add 200 to the perciever ids
+
+summary(df$pID)
+df <- df %>% mutate(pID = pID + 200)
+
+# the target for demographic questions is the perceiver (the participant);
+# change from 102 to the pID
+
+summary(df$target_user)
+df <- df %>% mutate(target_user = ifelse(target_user == 102, pID, target_user))
+
+## give the questions better names
+
+# study 1
+
+s1q <- c(seq(4,26,1),28,29)
+s1q_lab <-c('outgoing','cold','thorough','nervous','actimag','reserved',
+            'trusting','lazy','relaxed','fewartint','trustworthy','selfesteem',
+            'funny','assertive','arrogant','intelligent','impulsive',
+            'centerattn', 'attractive','ilike','age','sex','race','ses','know')
+
+s1q_demo <- c(seq(2,6,1),8,9,10)        
+s1q_demo_lab <- c('sub_sex','sub_age','sub_EngFirstLang','sub_durationEng', 
+                  'sub_race','sub_SES','sub_twitteruse','sub_socMediaUse')
+
+
+s1ql<- data.frame(s1q,s1q_lab)
+s1ql$study = 1
+colnames(s1ql)<-c('question','qlabel','study')
+s1qld <- data.frame(s1q_demo, s1q_demo_lab)
+s1qld$study = 1
+colnames(s1qld)<-c('question','qlabel','study')
+
+# study 2
+s2q <- seq(4,30,1)
+s2q_lab <- c('trustOrganize','followSM','helpConflict','hire', 'friendshipOnline',
+             'helpIntellChallenge','movieTVrec','introduceFriend','adviceGoodImpression',
+             'romanticPartner_self','triviaPartner','casualSocial','trustInfoOnline',
+             'groupProject','buySomethingOnline','interestNewsOnline','askNotes',
+             'romanticPartner_friend','converseIntellStim','workTaskConflict',
+             'valueOpinion','trustDeadlines','friendsOffline','workStressfulTask',
+             'musicRec','paperFeedback','know')
+
+s2q_demo <- c(seq(2,6,1),8,10,11,12)
+s2q_demo_lab <- c('sub_sex','sub_sexOrientation','sub_age','sub_EngFirstLang',
+                  'sub_durationEng','sub_race','sub_SES','sub_twitteruse',
+                  'sub_socMediaUse')
+
+
+s2ql<- data.frame(s2q,s2q_lab)
+s2ql$study = 2
+colnames(s2ql)<-c('question','qlabel','study')
+
+s2qld <- data.frame(s2q_demo, s2q_demo_lab)
+s2qld$study = 2
+colnames(s2qld)<-c('question','qlabel','study')
+
+
+# combine
+qlabs <- bind_rows(list(s1ql, s2ql))
+qlabs_demo <- bind_rows(list(s1qld, s2qld))
+
+# one issue here is that the demos have the same range of question numbers (1:30)
+# as the other survery questions. to facilitate a cleaner join, i add 50 to those
+# numbers in both (note that we retain the 'key' variable, which is the original
+# question as produced by qualtrics, in case some of this gets mixed up along
+# the way.)
+
+summary(qlabs_demo$question)
+qlabs_demo <- qlabs_demo %>% mutate(question = question + 50)
+
+summary(df$question)
+df <- df %>% mutate(question = ifelse(pID == target_user, question + 50, question))
+
+# combine
+qlabs <- bind_rows(list(qlabs, qlabs_demo))
+
+# join to df (105752 obs, 15 vars)
+
+df <- left_join(df, qlabs, by = c('question', 'study'))
+
+
+# make variable names clearer
+names(df)
+colnames(df) <- c("sam",'df','start_date','end_date','finished','consent','stim',
+                  'orig_quest_num','target_user','question','value','sample',
+                  'study','pID','qlabel')
+
+#### write df; this is the file that should be made available.
+write.csv(df, 'Personality Impressions on Twitter_050417.csv', row.names = F)
+
