@@ -5,26 +5,22 @@ output: html_notebook
 
 This notebook goes through the data selection process for the Twitter Personality Study. It is primiarly focused on removing duplicate attempts from the same participant. It starts with the dataset created in `merge_restructure_delID.R`, which is publically available <XX url here XX>. This dataset contains all of the data collected from participants for this paper, which includes:
 
-* Study 1
-        * Personality impressions based on Twitter users' _profiles_, _followers_, and _friends_
-        * MTurk and Human Subjects Pool participants
-* Study 2
-        * Social decisions based on Twitter users' _profiles_
-        * Human Subjects Pool participants (we did not recruit MTurkers for this study)
+* Study 1  
+* Study 2  
 
 The dataset is in a very long format, where each row represents one response to one question from one participant.
 
 # Multiple Responses: Overview & Strategy
 
-During data collection, we put several safeguards in place to prevent individual participants from completing the study more than once. Due to both human and technical error, however, this didn't always pan out. In the rest of this document, I go through the data to both identify and remove participants who made multiple attempts at the study.
-
-There are 3[^1] sets of participants who are identified in this analysis:
-1. completed surveys about the same set of targets more than once
-2. completed surveys with the same kind of stimuli more than once
-3. completed more than one survey, but with different types of stimuli and different sets of targets
-
+During data collection, we put several safeguards in place to prevent individual participants from completing the study more than once. Due to both human and technical error, however, this didn't always pan out. In the rest of this document, I go through the data to both identify and remove participants who made multiple attempts at the study.  
+  
+There are 3[^1] sets of participants who are identified in this analysis:  
+1. completed surveys about the same set of targets more than once  
+2. completed surveys with the same kind of stimuli more than once  
+3. completed more than one survey, but with different types of stimuli and different sets of targets  
+  
 The aim of this analysis is to both (a) maximize power by retaining as many participant responses as possible, while (b) ensuring independence across our observations. For those who fall into category 1 or 2, we will ultimately select only their first attempt at completing the study. 
-
+  
 Those who fall into category 3 are trickier. They did not rate the same target more than once, and they saw different kinds of stimuli. Moreover, because we collected the data for different types of stimuli sequentially, using only their first response will almost always mean that we will end up with more responses for profiles (which were collected first) than for the other two categories. As a result, we will keep these participants in the dataset, but will test to see whether their inclusion impacts the results.
 
 
@@ -354,7 +350,6 @@ ggplot(df_uniq, aes(survey_sd, duration)) +
 Ahhah! They aren't so terrible after all; they just completed a different study.
 
 ```{r}
-df_uniq %>% filter(survey_sd < 3) %>% summarize(count=n())
 ```
 
 
