@@ -1,6 +1,8 @@
 ---
-title: "R Notebook"
-output: html_notebook
+title: "Remove Unfinished and Duplicate Attempts"
+output:
+  html_document: default
+  html_notebook: default
 ---
 
 This notebook goes through the data selection process for the Twitter Personality Study. It is primiarly focused on removing duplicate attempts from the same participant. It starts with the dataset created in `merge_restructure_delID.R`, which is publically available <XX url here XX>. This dataset contains all of the data collected from participants for this paper, which includes:
@@ -34,7 +36,7 @@ library(tidyverse)
 library(psych)
 setwd('~/Dropbox/Twitter and personality project/personality impressions study/Personality Ratings Study/third times a charm')
 
-df <- tbl_df(read_csv('Personality Impressions on Twitter_050417.csv'))
+df <- tbl_df(read_csv('Personality Impressions on Twitter_052317.csv'))
 ```
 
 *Total number of participants:*
@@ -514,7 +516,7 @@ n_orig_bystudy %>% merge(n_dropunfinished_bystudy) %>%
 We filtered out participants who had incomplete attempts, and selected only the first attempts for participants with multiple attempts on either the same set of targets or the same kind of stimulus. For ease of use, this filtered file will also be made available < XXXX >.
 
 ```{r}
-write.csv(df_filtered, 'Personality Impressions on Twitter_Filtered_051917.csv',
+write.csv(df_filtered, 'Personality Impressions on Twitter_Filtered_052317.csv',
           row.names = F)
 ```
 

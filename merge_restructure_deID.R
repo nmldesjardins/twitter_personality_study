@@ -341,7 +341,20 @@ df$unique_id2 <- as.numeric(as.factor(with(df, paste(toupper(id)))))
 length(unique(df$id)) # original ids
 length(unique(df$unique_id2)) # new ids
 
-# remove test cases (where id is missing or invalid)
+
+
+################################################################################
+####                             PRE-PROCESSING                             ####
+################################################################################
+
+# the next few steps will do some filtering that is only possible with the
+# identified data, as well as go through a few pre-processing steps to make the
+# dataset more user-friendly
+
+
+#### ID-BASED FILTERING --------------------------------------------------------
+
+### remove test cases (where id is missing or invalid)
 # The test cases are instances where one of the researchers went through the 
 # study to ensure it was working properly; these are identified by cases that 
 # have no id or have invalid ids. 
@@ -356,7 +369,12 @@ df <- df %>% select(-c(id,unique_id))
 # rename id var
 names(df)[names(df) == 'unique_id2'] <- 'pID'
 
-### do some clean up to make the dataset more user-friendly
+
+#### PRE-PROCESSING --------------------------------------------------------
+
+
+### in this section i do some clean-up to make the resulting dataset more 
+### user-friendly
 
 ## update target ids
 # now, the first 101 perciever ids overlap with the target ids
@@ -373,6 +391,11 @@ df <- df %>% mutate(target_user = ifelse(target_user == 102, pID, target_user))
 
 ## give the questions better names
 
+# because participants could select multiple options for their own race, i'll
+# label those separately at the end (because of how the original question labels 
+# were parsed, all of the race options show up as question 6 - it didn't
+# maintain the 6_1, 6_2, etc., which will end up causing problems later)
+
 # study 1
 
 s1q <- c(seq(4,26,1),28,29)
@@ -381,9 +404,9 @@ s1q_lab <-c('outgoing','cold','thorough','nervous','actimag','reserved',
             'funny','assertive','arrogant','intelligent','impulsive',
             'centerattn', 'attractive','ilike','age','sex','race','ses','know')
 
-s1q_demo <- c(seq(2,6,1),8,9,10)        
+s1q_demo <- c(seq(2,5,1),8,9,10)        
 s1q_demo_lab <- c('sub_sex','sub_age','sub_EngFirstLang','sub_durationEng', 
-                  'sub_race','sub_SES','sub_twitteruse','sub_socMediaUse')
+                  'sub_SES','sub_twitteruse','sub_socMediaUse')
 
 
 s1ql<- data.frame(s1q,s1q_lab)
@@ -403,9 +426,9 @@ s2q_lab <- c('trustOrganize','followSM','helpConflict','hire', 'friendshipOnline
              'valueOpinion','trustDeadlines','friendsOffline','workStressfulTask',
              'musicRec','paperFeedback','know')
 
-s2q_demo <- c(seq(2,6,1),8,10,11,12)
+s2q_demo <- c(seq(2,6,1),10,11,12)
 s2q_demo_lab <- c('sub_sex','sub_sexOrientation','sub_age','sub_EngFirstLang',
-                  'sub_durationEng','sub_race','sub_SES','sub_twitteruse',
+                  'sub_durationEng','sub_SES','sub_twitteruse',
                   'sub_socMediaUse')
 
 
@@ -437,17 +460,58 @@ df <- df %>% mutate(question = ifelse(pID == target_user, question + 50, questio
 # combine
 qlabs <- bind_rows(list(qlabs, qlabs_demo))
 
-# join to df (105752 obs, 15 vars)
+# join to df (105645 obs, 14 vars)
 
 df <- left_join(df, qlabs, by = c('question', 'study'))
 
 
-# make variable names clearer
+## now label race vars
+
+# get appropriate question/label combos (they're the same for all of the 
+# surveys; will just get them from the original profiles file)
+qlabpairs <- tbl_df(read.csv("Twitter_Profiles___First_100_HSP.csv",
+                            header = T, stringsAsFactors = F, nrows = 2))
+
+qlabpairs[, grep("102.6_", colnames(qlabpairs))]
+
+df <- df %>% mutate(qlabel = ifelse(key == 'Q102.6_1','sub_raceBlk',
+                                    ifelse(key == 'Q102.6_2','sub_raceAsian',
+                                           ifelse(key == 'Q102.6_3','sub_raceHisp',
+                                                  ifelse(key == 'Q102.6_4','sub_raceNatAm',
+                                                         ifelse(key == 'Q102.6_5','sub_raceWht',
+                                                                ifelse(key == 'Q102.6_6','sub_raceOther',qlabel)))))))
+
+
+
+
+qlabpairsS2 <- tbl_df(read.csv("Twitter_Profiles__Behavioral_Affordances_Followup.csv",
+                             header = T, stringsAsFactors = F, nrows = 2))
+
+qlabpairsS2[, grep("102.8_", colnames(qlabpairsS2))]
+
+
+df <- df %>% mutate(qlabel = ifelse(key == 'Q102.8_1','sub_raceBlk',
+                                    ifelse(key == 'Q102.8_2','sub_raceAsian',
+                                           ifelse(key == 'Q102.8_3','sub_raceHisp',
+                                                  ifelse(key == 'Q102.8_4','sub_raceNatAm',
+                                                         ifelse(key == 'Q102.8_5','sub_raceWht',
+                                                                ifelse(key == 'Q102.8_6','sub_raceOther',qlabel)))))))
+
+
+
+summary(as.factor(df$qlabel))
+
+## make variable names more descriptive
+
 names(df)
 colnames(df) <- c("sam",'df','start_date','end_date','finished','consent','stim',
                   'orig_quest_num','target_user','question','value','sample',
                   'study','pID','qlabel')
 
+
+
+
+
 #### write df; this is the file that should be made available.
-write.csv(df, 'Personality Impressions on Twitter_050417.csv', row.names = F)
+write.csv(df, 'Personality Impressions on Twitter_052317.csv', row.names = F)
 
