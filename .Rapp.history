@@ -1,0 +1,48 @@
+memory.limit()
+sessionInfo()
+library(tidyverse); library(reshape2); library(forcats)#
+library(lme4); library(TripleR)#
+options(tibble.width = Inf)#
+setwd('~/Documents/GitHub/twitter_personality_study')#
+#
+df <- tbl_df(read_csv('Personality Impressions on Twitter_Filtered_052317.csv'))
+df_wide<-dcast(df %>% select(-c(question, orig_quest_num)),#
+                pID + target_user + stim + study + ...				#
+               ~qlabel,  					#
+               value.var="value")#
+#
+df_wide %>% arrange(pID, target_user) %>% head()
+df_wide <- df_wide %>% #
+        mutate(cold_r = 6-cold, #
+                   reserved_r = 6 - reserved,#
+                   lazy_r = 6 - lazy,#
+                   relaxed_r = 6 - relaxed,#
+                   fewartint_r = 6 - fewartint) %>%#
+        mutate(ext = (outgoing + cold_r)/2,#
+               agr = (trusting+reserved_r)/2,#
+               con = (thorough + lazy_r)/2,#
+               neu = (nervous + relaxed_r)/2,#
+               ope = (actimag + fewartint_r)/2)
+df2<- df_wide %>% gather(qlabel, # name of the new key variable#
+                         value, # name of the new value variable#
+                         c(actimag:introduceFriend, lazy:ope), # variables to make long; all of them except know#
+                         na.rm = T) %>% # drop rows where value is missing#
+        arrange(pID, target_user)
+df2a <- df2 %>% filter(!(qlabel %in% skip)) %>%#
+        group_by(study, stim, qlabel)
+skip <- c('sub_age','sub_durationEng','sub_EngFirstLang', 'sub_raceAsian',#
+          'sub_raceBlk','sub_raceHisp','sub_raceNatAm','sub_raceOther',#
+          'sub_raceWht','sub_SES','sub_sex','sub_sexOrientation',#
+          'sub_socMediaUse','sub_twitteruse')
+df2a <- df2 %>% filter(!(qlabel %in% skip)) %>%#
+        group_by(study, stim, qlabel)
+ICCs<-df2a %>%#
+        do({#
+                model<-lmer(value~1 + (1|pID) + (1|target_user), data=.)#
+                var<-as.data.frame(VarCorr(model))#
+                ICC.p<-round((var[which(var$grp=="pID"),4]/sum(var[,4])), #
+                             digits = 3)#
+                ICC.t<-round((var[which(var$grp=="target_user"),4]/sum(var[,4])), #
+                             digits = 3)#
+                data.frame(ICC.t,ICC.p)#
+        })

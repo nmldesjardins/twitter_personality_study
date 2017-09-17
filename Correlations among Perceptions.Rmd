@@ -1,0 +1,116 @@
+---
+title: "Perception Correlations"
+output: html_notebook
+---
+
+This notebook runs the primary analyses, which are correlations among different types of perceptions across stimuli. 
+
+```{r}
+library(tidyverse); library(reshape2); library(forcats)
+library(lme4); library(TripleR)
+options(tibble.width = Inf)
+
+
+setwd('~/Documents/GitHub/twitter_personality_study')
+df <- read.csv("Twitter_Personality_target_level_aggregates.csv")
+```
+```{r}
+head(df)
+```
+
+Restructure to wide format:  
+
+```{r}
+df_wide<-dcast(df %>% select(-c(targ_agg, s2m)),
+                target_user				
+               ~qlabel + stim,  					
+               value.var="targ_agg2")
+head(df_wide)
+```
+
+## Descriptives
+
+```{r}
+df_wide_d <- suppressWarnings(data.frame(psych::describe(df_wide %>% select(-target_user))[1:4]))
+
+df_wide_d %>% mutate(vars = rownames(df_wide_d))
+```
+
+```{r}
+dfpp <- df %>% filter(qlabel != 'age' & qlabel != 'ses' & qlabel != 'race' & qlabel != 'sex')
+ggplot(dfpp %>% filter(study == 1 & stim == 'profile'), aes(targ_agg)) + facet_wrap(~qlabel) + 
+        geom_histogram(fill = 'blue', alpha = .5, bins = 15) +
+        ggtitle('Personality Perceptions by Item, Study 1 Profiles')
+```
+
+
+```{r}
+ggplot(dfpp %>% filter(study == 1 & stim == 'friends'), aes(targ_agg)) + facet_wrap(~qlabel) + 
+        geom_histogram(fill = 'green', alpha = .75, bins = 15) +
+        ggtitle('Personality Perceptions by Item, Study 1 Friends')
+```
+```{r}
+ggplot(dfpp %>% filter(study == 1 & stim == 'followers'), aes(targ_agg)) + facet_wrap(~qlabel) + 
+        geom_histogram(fill = 'red', alpha = .5, bins = 15) +
+        ggtitle('Personality Perceptions by Item, Study 1 Followers')
+```
+```{r}
+dfpd <- df %>% filter(qlabel == 'age' | qlabel == 'ses' | qlabel == 'race' | qlabel == 'sex')
+ggplot(dfpd %>% filter(study == 1 & qlabel == 'age'), aes(targ_agg)) + facet_wrap(~stim) + 
+        geom_histogram(bins = 15, aes(fill = stim)) +
+        ggtitle('Study 1 Perceptions of Age by Stimuli')
+```
+
+```{r}
+ggplot(dfpd %>% filter(study == 1 & qlabel == 'ses'), aes(targ_agg)) + facet_wrap(~stim) + 
+        geom_histogram(bins = 15, aes(fill = stim)) +
+        ggtitle('Study 1 Perceptions of Age by Stimuli')
+```
+
+```{r}
+ggplot(dfpd %>% filter(study == 1 & qlabel == 'race'), aes(targ_agg)) + facet_wrap(~stim) + 
+        geom_histogram(bins = 15, aes(fill = stim)) +
+        ggtitle('Study 1 Perceptions of Age by Stimuli')
+```
+
+```{r}
+ggplot(dfpd %>% filter(study == 1 & qlabel == 'sex'), aes(targ_agg)) + facet_wrap(~stim) + 
+        geom_histogram(bins = 15, aes(fill = stim)) +
+        ggtitle('Study 1 Perceptions of Age by Stimuli')
+```
+  
+### Study 2  
+  
+```{r}
+ggplot(dfpp %>% filter(study == 2), aes(targ_agg)) + facet_wrap(~qlabel) + 
+        geom_histogram(fill = 'orange', alpha = .5, bins = 10) +
+        ggtitle('Behavioral Affordances - Original Means')
+```
+```{r}
+ggplot(dfpp %>% filter(study == 2), aes(targ_agg2)) + facet_wrap(~qlabel) + 
+        geom_histogram(fill = 'orange', alpha = .75, bins = 10) +
+        ggtitle('Behavioral Affordances - Ipsatized Means')
+```
+
+
+
+
+## Correlations  
+
+```{r}
+c <- data.frame(cor(df_wide %>% select(-target_user), use = 'pairwise.complete.obs'))
+c
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

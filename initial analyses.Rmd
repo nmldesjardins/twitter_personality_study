@@ -1,15 +1,15 @@
 ---
-title: "Initial Analyses"
+title: "Disaggregated Data Exploration and ICC Computation"
 output: html_notebook
 ---
 
 ```{r echo=F}
 library(tidyverse); library(reshape2); library(forcats)
-library(psych); library(lme4); library(TripleR)
+library(lme4); library(TripleR)
 options(tibble.width = Inf)
 
 
-setwd('~/Dropbox/Twitter and personality project/personality impressions study/Personality Ratings Study/third times a charm')
+setwd('~/Documents/GitHub/twitter_personality_study')
 
 df <- tbl_df(read_csv('Personality Impressions on Twitter_Filtered_052317.csv'))
 ```
@@ -67,6 +67,8 @@ df2<- df_wide %>% gather(qlabel, # name of the new key variable
  
 Now that we're in wide format, it'll be easier to change some of the less intuitive ways Qualtrics encoded some of the values. We'll also re-code the categorical variables to give them more meaningful values, and transform some of our character vars to factors so they're easier to work with. Note that all of the likert responses are 1 (strongly disagree) to 5 (strongly agree), with the exception of SES, which is 1 (low) to 10 (high).  
 
+Note that all variables that start with `sub_` are participants' reports about themselves, and all other variables are participants' reports about the target. E.g., `sub_age` is the participant's report of thier own age, and `age` is the participant's report of how old they think the target is.
+
 Convert to factors:
 
 ```{r}
@@ -112,7 +114,7 @@ summary((df_wide$sub_socMediaUse))
 summary((df_wide$sub_twitteruse))
 ```
 
-
+This will throw an 'Unknown levels' warning; it's fine to ignore. 
 
 ```{r}
 df_wide <- df_wide %>% mutate(sex = fct_recode(sex, 
@@ -194,21 +196,21 @@ Let's take a look at descriptives by each survey.
 
 Study 1:
 ```{r}
-s1p <- suppressWarnings(data.frame(describe(df_wide %>% 
+s1p <- suppressWarnings(data.frame(psych::describe(df_wide %>% 
                                                     filter(study == 1 
                                                            & stim == 'profile'))[19:93,1:4]))
 
 s1p <- s1p %>% mutate(vars = rownames(s1p)) %>% filter(n > 0) %>% 
         rename(N_profile = n, M_profile = mean, SD_profile = sd)
 
-s1fo <- suppressWarnings(data.frame(describe(df_wide %>% 
+s1fo <- suppressWarnings(data.frame(psych::describe(df_wide %>% 
                                                      filter(study == 1 
                                                             & stim == 'followers'))[19:93,1:4]))
 
 s1fo <- s1fo %>% mutate(vars = rownames(s1fo)) %>% filter(n > 0)%>% 
         rename(N_followers = n, M_followers = mean, SD_followers = sd)
 
-s1f <- suppressWarnings(data.frame(describe(df_wide %>% 
+s1f <- suppressWarnings(data.frame(psych::describe(df_wide %>% 
                                                     filter(study == 1 
                                                            & stim == 'friends'))[19:93,1:4]))
 
@@ -223,7 +225,7 @@ merge(s1p,s1f, by = 'vars') %>% merge(s1fo, by = 'vars')
 
 Study 2:  
 ```{r}
-s2p <- suppressWarnings(data.frame(describe(df_wide %>% 
+s2p <- suppressWarnings(data.frame(psych::describe(df_wide %>% 
                                                     filter(study == 2))[19:93,1:4]))
 
 s2p %>% mutate(vars = rownames(s2p)) %>% filter(n > 0)
@@ -241,11 +243,12 @@ s1q_lab <-c('outgoing','cold','thorough','nervous','actimag','reserved',
 
 ggplot(df2 %>% filter(qlabel %in% s1q_lab), aes(value)) + facet_wrap(~qlabel) + 
         geom_histogram(data = df %>% filter(qlabel %in% s1q_lab & stim =='profile'), 
-                       fill = 'red', alpha = .4, bins = 10) +
+                       fill = 'red', alpha = .5, bins = 5) +
         geom_histogram(data = df %>% filter(qlabel %in% s1q_lab & stim =='friends'), 
-                       fill = 'blue', alpha = .5, bins = 10) +
+                       fill = 'blue', alpha = .5, bins = 5) +
         geom_histogram(data = df %>% filter(qlabel %in% s1q_lab & stim =='followers'), 
-                       fill = 'green', alpha = .2, bins = 10) 
+                       fill = 'yellow', alpha = .5, bins = 5) +
+        ggtitle('Personality Perceptions by Item, Stimulus')
 
 ```
 
@@ -253,7 +256,8 @@ ggplot(df2 %>% filter(qlabel %in% s1q_lab), aes(value)) + facet_wrap(~qlabel) +
 ```{r}
 ggplot(df %>% filter(qlabel %in% s1q_lab), aes(value, colour = stim, fill = stim)) + 
         facet_wrap(~qlabel) +
-        geom_density(alpha = .1)
+        geom_density(alpha = .1)+
+        ggtitle('Personality Perceptions by Item, Stimulus')
 ```
 
 
@@ -265,18 +269,20 @@ s1q_targdemo <- c('age', 'sex', 'ses','race','know')
 ggplot(df %>% filter(qlabel %in% s1q_targdemo), aes(value)) + 
         facet_wrap(~qlabel, scales = 'free_x') + 
         geom_histogram(data = df %>% filter(qlabel %in% s1q_targdemo & stim =='profile'), 
-                       fill = 'red', alpha = .4, bins = 10) +
+                       fill = 'red', alpha = .4, bins = 5) +
         geom_histogram(data = df %>% filter(qlabel %in% s1q_targdemo & stim =='friends'), 
-                       fill = 'blue', alpha = .5, bins = 10) +
+                       fill = 'blue', alpha = .5, bins = 5) +
         geom_histogram(data = df %>% filter(qlabel %in% s1q_targdemo & stim =='followers'), 
-                       fill = 'green', alpha = .2, bins = 10) 
+                       fill = 'green', alpha = .2, bins = 5) +
+        ggtitle('Demographic Perceptions by Item, Stimulus')
 ```
 
 ```{r}
 s1q_targdemo2 <- c('age', 'sex', 'ses','race')
 ggplot(df %>% filter(qlabel %in% s1q_targdemo2), aes(value, colour = stim, fill = stim)) + 
         facet_wrap(~qlabel, scales = 'free_x') +
-        geom_density(alpha = .1)
+        geom_density(alpha = .1) +
+        ggtitle('Demographic Perceptions by Item, Stimulus')
 
 ```
 
@@ -292,7 +298,8 @@ s2q_lab <- c('trustOrganize','followSM','helpConflict','hire', 'friendshipOnline
              'musicRec','paperFeedback')
 
 ggplot(df %>% filter(qlabel %in% s2q_lab), aes(value)) + facet_wrap(~qlabel) + 
-        geom_histogram(bins = 10)
+        geom_histogram(bins = 5) +
+        ggtitle('Study 2 Decisions by Item')
 ```
 
 # ICCs
@@ -320,8 +327,10 @@ ICCs<-df2 %>% filter(!(qlabel %in% skip)) %>%
 
 Filter out cases where the participant said they knew the target.
 ```{r}
-ICCs_unknown<-df2 %>% filter(know == 2) %>%
-        filter(!(qlabel %in% skip)) %>% 
+df2a <- df2 %>% filter(know == 2) %>%
+        filter(!(qlabel %in% skip))
+
+ICCs_unknown<- df2a  %>% 
         group_by(study, stim, qlabel) %>%
         do({
                 model<-lmer(value~1 + (1|pID) + (1|target_user), data=.)
@@ -341,8 +350,11 @@ iccs <- merge(ICCs,ICCs_unknown, on = c('study','stim','qlabel'))
 Filter out all subsequent attempts (take just the first attempt overall, instead of just the 1st attempt for a particular stimulus).
 
 ```{r}
-ICCs_1st<-df2 %>% filter(attempt==1) %>%
-        filter(!(qlabel %in% skip)) %>% 
+df2b <- df2 %>% filter(attempt==1) %>%
+        filter(!(qlabel %in% skip))
+
+
+ICCs_1st<- df2b %>% 
         group_by(study, stim, qlabel) %>%
         do({
                 model<-lmer(value~1 + (1|pID) + (1|target_user), data=.)
@@ -362,8 +374,10 @@ iccs <- merge(iccs, ICCs_1st, on = c('study','stim','qlabel'))
 Filter out all subsequent attempts AND knowns.
 
 ```{r}
-ICCs_1stunknown<-df2 %>% filter(know == 2 & attempt == 1) %>%
-        filter(!(qlabel %in% skip)) %>% 
+df2c <- df2 %>% filter(know == 2 & attempt == 1) %>%
+        filter(!(qlabel %in% skip))
+
+ICCs_1stunknown<-df2c  %>% 
         group_by(study, stim, qlabel) %>%
         do({
                 model<-lmer(value~1 + (1|pID) + (1|target_user), data=.)
@@ -454,10 +468,142 @@ iccs <- iccs %>% mutate(diff_allunknown.t = ICC.t - ICC.t_unknown,
                         diff_unknown1stunknown.p = ICC.p_unknown - ICC.p_1stunknown)
 
 
-describe(iccs %>% filter(study == 1 & stim == 'profiles'))[1:4]
-describe(iccs %>% filter(study == 1 & stim == 'friends'))[1:4]
-describe(iccs %>% filter(study == 1 & stim == 'followers'))[1:4]
+psych::describe(iccs %>% filter(study == 1 & stim == 'profiles'))[1:4]
+psych::describe(iccs %>% filter(study == 1 & stim == 'friends'))[1:4]
+psych::describe(iccs %>% filter(study == 1 & stim == 'followers'))[1:4]
 
-describe(iccs %>% filter(study == 2))[1:4]
+psych::describe(iccs %>% filter(study == 2))[1:4]
 ```
+
+The differences are generally very small, and all of the filters produce similar results. I'm inclined to retain as much of the data as possible, and so will proceed with the relatively un-filtered dataset, with 'knowns' removed. This one has removed all but the first attempt from each participant for each stimuli, and has removed subsequent responses from participants who saw stimuli for the same set of targets, but retains participants (all from MTurk) who rated different sets of targets across different kinds of stimuli. 
+  
+I'm seeing here that whether or not a participant indicated that they knew a target doesn't dramatically impact the ratings of the targets. However, we are concerned with how people rate strangers on the internet. Although the answers to this question are rather ambiguous for friends/followers (e.g., the participant may have known someone in the collage, or may be familiar with, e.g., a celebrity in the collage rather than actually know who the target is), I'll remove these to keep the data consistent with itself. It's also important to keep in mind that, because these targets were chosen at random, it's possible that participants who inidcated they knew a target may just have not been paying attention. Participants answered this question for each target they saw. I will retain their responses for targets they said they did _not_ know, and just remove those who they said they knew.  
+  
+```{r}
+df2a1 <- df2 %>% filter(know == 2)
+write.csv(df2a1, 'Personality_Impressions_on_Twitter_Filtered_noKnowns_091717.csv')
+
+#save the ICCs
+write.csv(ICCs_unknown, 'Personality_Impressions_on_Twitter_ICCs_091717.csv')
+```
+
+### Descriptives, again  
+
+Re-run the descriptives without the known targets included. *These should be what wind up in the paper.*
+
+
+Study 1:
+```{r}
+s1p <- suppressWarnings(data.frame(psych::describe(df_wide %>% 
+                                                    filter(study == 1 & know == 'no'
+                                                           & stim == 'profile'))[19:93,1:4]))
+
+s1p <- s1p %>% mutate(vars = rownames(s1p)) %>% filter(n > 0) %>% 
+        rename(N_profile = n, M_profile = mean, SD_profile = sd)
+
+s1fo <- suppressWarnings(data.frame(psych::describe(df_wide %>% 
+                                                     filter(study == 1 & know == 'no'
+                                                            & stim == 'followers'))[19:93,1:4]))
+
+s1fo <- s1fo %>% mutate(vars = rownames(s1fo)) %>% filter(n > 0)%>% 
+        rename(N_followers = n, M_followers = mean, SD_followers = sd)
+
+s1f <- suppressWarnings(data.frame(psych::describe(df_wide %>% 
+                                                    filter(study == 1 & know == 'no'
+                                                           & stim == 'friends'))[19:93,1:4]))
+
+s1f <- s1f %>% mutate(vars = rownames(s1f)) %>% filter(n > 0)%>% 
+        rename(N_friends = n, M_friends = mean, SD_friends = sd)
+
+
+merge(s1p,s1f, by = 'vars') %>% merge(s1fo, by = 'vars')
+
+```
+
+
+Study 2:  
+```{r}
+s2p <- suppressWarnings(data.frame(psych::describe(df_wide %>% 
+                                                    filter(study == 2 & know == 'no'))[19:93,1:4]))
+
+s2p %>% mutate(vars = rownames(s2p)) %>% filter(n > 0)
+
+```
+
+```{r}
+
+s1q_lab <-c('outgoing','cold','thorough','nervous','actimag','reserved',
+            'trusting','lazy','relaxed','fewartint','trustworthy','selfesteem',
+            'funny','assertive','arrogant','intelligent','impulsive',
+            'centerattn', 'attractive','ilike')
+
+
+
+ggplot(df2 %>% filter(qlabel %in% s1q_lab & know == 2), aes(value)) + facet_wrap(~qlabel) + 
+        geom_histogram(data = df2 %>% filter(qlabel %in% s1q_lab & stim =='profile' & know == 2), 
+                       fill = 'red', alpha = .5, bins = 5) +
+        geom_histogram(data = df2 %>% filter(qlabel %in% s1q_lab & stim =='friends' & know == 2), 
+                       fill = 'blue', alpha = .5, bins = 5) +
+        geom_histogram(data = df2 %>% filter(qlabel %in% s1q_lab & stim =='followers' & know == 2), 
+                       fill = 'yellow', alpha = .5, bins = 5) +
+        ggtitle('Personality Perceptions by Item, Stimulus\nUnknown Targets Only')
+
+```
+
+
+```{r}
+ggplot(df2 %>% filter(qlabel %in% s1q_lab & know == 2), aes(value, colour = stim, fill = stim)) + 
+        facet_wrap(~qlabel) +
+        geom_density(alpha = .1)+
+        ggtitle('Personality Perceptions by Item, Stimulus')
+```
+
+
+
+
+```{r}
+s1q_targdemo <- c('age', 'sex', 'ses','race','know')
+
+ggplot(df2 %>% filter(qlabel %in% s1q_targdemo & know == 2), aes(value)) + 
+        facet_wrap(~qlabel, scales = 'free_x') + 
+        geom_histogram(data = df2 %>% filter(qlabel %in% s1q_targdemo & stim =='profile' & know == 2), 
+                       fill = 'red', alpha = .4, bins = 5) +
+        geom_histogram(data = df2 %>% filter(qlabel %in% s1q_targdemo & stim =='friends' & know == 2), 
+                       fill = 'blue', alpha = .5, bins = 5) +
+        geom_histogram(data = df2 %>% filter(qlabel %in% s1q_targdemo & stim =='followers' & know == 2), 
+                       fill = 'green', alpha = .2, bins = 5) +
+        ggtitle('Demographic Perceptions by Item, Stimulus\nUnknown Targets Only')
+```
+
+```{r}
+s1q_targdemo2 <- c('age', 'sex', 'ses','race')
+ggplot(df2 %>% filter(qlabel %in% s1q_targdemo2 & know == 2), aes(value, colour = stim, fill = stim)) + 
+        facet_wrap(~qlabel, scales = 'free_x') +
+        geom_density(alpha = .1) +
+        ggtitle('Demographic Perceptions by Item, Stimulus\nUnknown Targets Only')
+
+```
+
+
+```{r}
+s2q_lab <- c('trustOrganize','followSM','helpConflict','hire', 'friendshipOnline',
+             'helpIntellChallenge','movieTVrec','introduceFriend','adviceGoodImpression',
+             'romanticPartner_self','triviaPartner','casualSocial','trustInfoOnline',
+             'groupProject','buySomethingOnline','interestNewsOnline','askNotes',
+             'romanticPartner_friend','converseIntellStim','workTaskConflict',
+             'valueOpinion','trustDeadlines','friendsOffline','workStressfulTask',
+             'musicRec','paperFeedback')
+
+ggplot(df2 %>% filter(qlabel %in% s2q_lab & know == 2), aes(value)) + facet_wrap(~qlabel) + 
+        geom_histogram(bins = 5) +
+        ggtitle('Study 2 Decisions by Item\nUnknown Targets Only')
+```
+
+
+### Onward and upward  
+
+This notebook dealt primiarly with the disaggregated data. Please see the next in the series, _Target-level Aggregation_ for next steps in the analysis. There, I'll roll everything up to the target level, using the known-excluded data from this notebook.
+
+
+
 

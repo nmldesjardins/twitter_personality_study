@@ -1,0 +1,182 @@
+---
+title: "Aggregate to Target-Level Data"
+output: html_notebook
+---
+
+The previous notebook, _Disaggregated Data Exploration and ICC Computation_, looked through the disaggregated data, computed the ICCs, and made some additional exclusions  (we kicked out cases where participants said they knew the target). Here, I aggregate up to target-level data, which is what we'll use for the focal analyses. 
+
+```{r echo = F}
+library(tidyverse); library(reshape2); library(forcats)
+library(lme4); library(TripleR)
+options(tibble.width = Inf)
+
+
+setwd('~/Documents/GitHub/twitter_personality_study')
+
+df <- read_csv('Personality_Impressions_on_Twitter_Filtered_noKnowns_091717.csv')
+df <- df %>% select(-X1)
+```
+```{r}
+head(df)
+```
+
+I'm starting with a very long (each row is 1 response) df that has the data for each study and stimulus. This data set has been filtered to only include responses for unknown targets, the first attempt of each stimuli (for study 1), and has excluded subsequent attempts that rated the same targets.  For sanity, let's just be sure that's all true.  
+
+```{r sanitycheck}
+summary(as.factor(df$stim_attempt))
+summary(as.factor(df$mult_stim_attempts))
+summary(as.factor(df$know))
+summary(as.factor(df$consent))
+summary(as.factor(df$same_target))
+```
+
+Cool cool. Let's get down to business. (That 1 for same_target is for the first attempt from the participants who saw the same target - nothing to worry about there.) 
+  
+## Target-level aggregation  
+
+To get the scores for each target, we need to take the average rating for each question (except for sex and race) across all percievers who saw that target with that stimulus.  
+ 
+```{r}
+unique(df$qlabel)
+```
+```{r}
+target_scores <- df[which(df$qlabel != 'sex' & df$qlabel != 'race'),] %>% 
+                    group_by(study, stim, target_user, qlabel) %>% 
+                    summarize(targ_agg = mean(value, na.rm = T))
+head(target_scores)
+```
+
+### Sex and Race  
+Since sex and race are (as assessed here) categorical, I'll use a different strategy to aggregate them. Agreement for both is quite high across perceivers when they see the target's profile:
+
+```{r}
+ICC <- read_csv('Personality_Impressions_on_Twitter_ICCs_091717.csv')
+ICC <- ICC %>% select(-X1)
+```
+```{r}
+ICC %>% filter((qlabel == 'sex') | (qlabel == 'race'))
+```
+
+
+To get the aggregated ratings, I'll obtain the modal response for each target and then assess agreement with that mode. I'll use responses with majority agreement. We only see less than 50% agreement for the race variable. Manual inspection of the profiles indicates that many of these targets may (at least from appearance) be mixed-race, suggesting that low agreement is a function of true racial/ethnic ambiguity. As a result, an additional category will be created for these targets.  
+  
+I'm also generating a variable that indicates whether percievers achieved > 2/3 majority agreement, in the even that we decide to be more stringent on this in the future.
+  
+```{r modes}
+# function to compute mode
+Mode<-function(x){
+       ux<-unique(x)
+      ux[which.max(tabulate(match(x,ux)))]
+}
+
+sexrace <- df[which(df$qlabel == 'sex' | df$qlabel == 'race'),] %>% 
+                    group_by(study, stim, target_user, qlabel) %>% 
+                    summarize(targ_agg = Mode(value))
+head(sexrace)
+```
+
+
+```{r}
+# get n perc / target
+sexrace <- merge(sexrace, df %>% group_by(study, stim, target_user) %>% summarize(nperc = n_distinct(pID)))
+
+# n percievers who gave modal response
+tmp <- df %>% filter(qlabel == 'race' | qlabel == 'sex')
+tmp <- left_join(tmp, sexrace, by = c('study','stim','target_user','qlabel'))
+tmp <- tmp %>% mutate('mode_agree' = as.numeric(value == targ_agg))
+tmp <- tmp %>% group_by(study, stim, target_user, qlabel) %>% summarize(sum_mode_agree = sum(mode_agree))
+
+sexrace <- merge(sexrace, tmp)
+
+# sanity check (should be 0 rows)
+sexrace %>% filter(sum_mode_agree > nperc)
+```
+
+```{r}
+# compute agreement as a percentage
+sexrace <- sexrace %>% mutate(pct_agree = sum_mode_agree/nperc)
+
+# indicate where agreement is greater than 50%, 66%
+
+sexrace <- sexrace %>% mutate(pct_agree50 = as.numeric(pct_agree > .5),
+                              pct_agree66 = as.numeric(pct_agree > .66))
+
+head(sexrace)
+```
+
+
+
+```{r}
+table(sexrace %>% group_by(study, stim, qlabel) %>% select(pct_agree50))
+table(sexrace %>% group_by(study, stim, qlabel) %>% select(pct_agree66))
+```
+
+Generally, agreement looks pretty good. For the folks where agreement on race is below 50%, I'll recode them into a separate category. Where agreement is below 50% for sex (only true for friends/followers), we'll stick with the mode.
+
+```{r}
+sexrace$targ_agg <- ifelse(sexrace$pct_agree < .5 & sexrace$qlabel == 'race', 8, sexrace$targ_agg)
+head(sexrace %>% filter(pct_agree < .5))
+```
+
+Add back to target scores:
+```{r}
+target_scores <- bind_rows(target_scores, sexrace[,1:5])
+head(target_scores)
+summary(as.factor(target_scores$qlabel))
+```
+
+```{r}
+unique(target_scores$qlabel)
+```
+
+## Study 2 Decisions  
+  
+We know from previous exploration of the Study 2 data that there's a strong evaluative factor -- percievers either wanted to interact with targets or they didn't. I'll verify that here, and then proceed with ipsatizing (i.e., removing the mean across all scores) the responses.  
+  
+#### PCA:  
+
+```{r}
+s2df<-dcast(target_scores %>% filter(study == 2),
+                target_user				
+               ~qlabel,  					
+               value.var="targ_agg")
+
+s2df <- s2df %>% select(-target_user)
+```
+
+```{r}
+library(nFactors)
+ev <- eigen(cor(s2df)) # get eigenvalues
+ap <- parallel(subject=nrow(s2df),var=ncol(s2df),rep=100,cent=.05)
+nS <- nScree(x=ev$values, aparallel=ap$eigen$qevpea)
+plotnScree(nS)
+```
+
+```{r}
+fit <- psych::principal(s2df, rotate="varimax")
+fit
+```
+
+So, clearly still one factor there. Let's ipsatize.
+
+```{r}
+target_scores <- left_join(target_scores, 
+                           target_scores %>% filter(study == 2) %>% summarize(s2m = mean(targ_agg)))
+head(target_scores)
+```
+```{r}
+target_scores[is.na(target_scores)] <- 0
+target_scores <- target_scores %>% mutate(targ_agg2 = targ_agg - s2m)
+head(target_scores)
+
+```
+```{r}
+head(target_scores %>% filter(study == 2))
+```
+
+Great. So targ_agg is the original aggregate, and targ_agg2 has the ipstized values. For study 1, targ_agg == targ_agg2.  
+
+```{r}
+write_csv(target_scores, "Twitter_Personality_target_level_aggregates.csv")
+```
+
